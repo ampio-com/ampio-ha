@@ -1,0 +1,110 @@
+"""Classify Ampio objects into Home Assistant features without importing Home Assistant."""
+
+from __future__ import annotations
+
+import math
+from typing import Any
+
+from .dictionary import kind
+
+RELAY_TYPES = {"przekaznik", "flaga", "flaga_l", "flaga_p"}
+NUMERIC_SENSOR_TYPES = {"temp", "lin_wej", "sensor", "bit8", "bit16", "sbit16", "bit32", "diag"}
+BINARY_SENSOR_TYPES = {"wej", "wej_d", "wej_g", "satel_wej", "motion", "presence"}
+COVER_TYPES = {"roleta", "roleta_procenty"}
+
+
+def relay_levels(device: dict[str, Any]) -> tuple[int, int]:
+    """Return off/on values, including the legacy 10/30 relay range."""
+    try:
+        minimum = int(float(device.get("min")))
+    except (TypeError, ValueError):
+        minimum = 0
+    try:
+        maximum = int(float(device.get("max")))
+    except (TypeError, ValueError):
+        maximum = 255
+    if (minimum, maximum) == (10, 30):
+        return 0, 255
+    if maximum == 0:
+        maximum = 255
+    return minimum, maximum
+
+
+def state_number(state: dict[str, Any]) -> float | None:
+    """Parse a state without treating the string \"0\" as true."""
+    raw = state.get("state")
+    if raw is None or isinstance(raw, bool):
+        return None
+    try:
+        number = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number):
+        return None
+    return number
+
+
+def _params(device: dict[str, Any], params: dict[int, dict[str, Any]]) -> dict[str, Any]:
+    try:
+        return params.get(int(device["id"]), {})
+    except (KeyError, TypeError, ValueError):
+        return {}
+
+
+def writable(device: dict[str, Any], params: dict[int, dict[str, Any]]) -> bool:
+    """Respect Ampio's read-only flag and omit PIN-protected controls."""
+    if device.get("bezpieczne") or device.get("haslo"):
+        return False
+    try:
+        flags = int(_params(device, params).get("params") or 0)
+    except (TypeError, ValueError):
+        flags = 0
+    return not flags & 0x40
+
+
+def _duration(device: dict[str, Any], params: dict[int, dict[str, Any]]) -> int:
+    try:
+        return int(_params(device, params).get("czas") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def is_stable_switch(device: dict[str, Any], params: dict[int, dict[str, Any]]) -> bool:
+    if device.get("typ_komponentu") not in RELAY_TYPES or not writable(device, params):
+        return False
+    if device.get("funkcja") != device.get("interpretacja"):
+        return False
+    return _duration(device, params) <= 0
+
+
+def is_impulse(device: dict[str, Any], params: dict[int, dict[str, Any]]) -> bool:
+    if device.get("typ_komponentu") not in RELAY_TYPES or not writable(device, params):
+        return False
+    return _duration(device, params) > 0 or device.get("funkcja") != device.get("interpretacja")
+
+
+def impulse_command(device: dict[str, Any], params: dict[int, dict[str, Any]]) -> str:
+    object_id = int(device["id"])
+    _off, on_value = relay_levels(device)
+    duration = _duration(device, params)
+    if duration > 0:
+        return f"/api/set/{object_id}/setValue/{on_value}/{duration}"
+    return f"/api/set/{object_id}/setValue/{on_value}"
+
+
+def is_light(device: dict[str, Any], params: dict[int, dict[str, Any]]) -> bool:
+    if device.get("typ_komponentu") != "led" or kind(device) != "none" or not writable(device, params):
+        return False
+    try:
+        flags = int(_params(device, params).get("params") or 0)
+    except (TypeError, ValueError):
+        flags = 0
+    return not flags & 0x100000
+
+
+def is_select(device: dict[str, Any], params: dict[int, dict[str, Any]]) -> bool:
+    return writable(device, params) and kind(device) == "select"
+
+
+def is_descriptive_sensor(device: dict[str, Any]) -> bool:
+    return kind(device) == "descriptive"

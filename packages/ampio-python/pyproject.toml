@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ampio-python"
+version = "0.1.0"
+description = "Local MQTT client for Ampio smart-home servers"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: Apache Software License",
+]
+dependencies = ["paho-mqtt==2.1.0"]
+
+[project.urls]
+Source = "https://github.com/ampio-com/ampio-ha"
+Issues = "https://github.com/ampio-com/ampio-ha/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]

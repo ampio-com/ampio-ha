@@ -1,0 +1,57 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Połącz z Ampio",
+        "description": "Połącz Home Assistant z lokalnym serwerem Ampio.",
+        "data": {
+          "host": "Adres serwera",
+          "port": "Port MQTT",
+          "websocket": "Użyj MQTT przez WebSocket",
+          "username": "Login Ampio",
+          "password": "Hasło Ampio"
+        },
+        "data_description": {
+          "host": "Lokalny adres IP lub nazwa hosta serwera Ampio.",
+          "port": "Zwykle 1883 dla MQTT TCP lub 9001 dla WebSocket, zależnie od konfiguracji Ampio.",
+          "websocket": "Włącz tylko przy połączeniu przez listener WebSocket Ampio.",
+          "username": "Konto Ampio z uprawnieniami do urządzeń udostępnianych w HA.",
+          "password": "Hasło tego konta Ampio."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Ponowne logowanie Ampio",
+        "description": "Ampio odrzuciło hasło użytkownika {username}. Podaj aktualne hasło.",
+        "data": {
+          "password": "Hasło Ampio"
+        },
+        "data_description": {
+          "password": "Hasło konta Ampio już skonfigurowanego w Home Assistant."
+        }
+      },
+      "reconfigure": {
+        "title": "Zmiana adresu Ampio",
+        "description": "Zmień sposób, w jaki Home Assistant łączy się z tym samym serwerem Ampio.",
+        "data": {
+          "host": "Adres serwera",
+          "port": "Port MQTT",
+          "websocket": "Użyj MQTT przez WebSocket"
+        },
+        "data_description": {
+          "host": "Lokalny adres IP lub nazwa hosta serwera Ampio.",
+          "port": "Zwykle 1883 dla MQTT TCP lub 9001 dla WebSocket, zależnie od konfiguracji Ampio.",
+          "websocket": "Włącz tylko przy połączeniu przez listener WebSocket Ampio."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Nie można połączyć się z Ampio",
+      "invalid_auth": "Nieprawidłowy login lub hasło Ampio",
+      "unsupported_server": "Serwer Ampio nie obsługuje oznaczania komend Home Assistant"
+    },
+    "abort": {
+      "already_configured": "Ten serwer Ampio jest już skonfigurowany",
+      "wrong_gateway": "Ten adres należy do innego serwera Ampio"
+    }
+  }
+}

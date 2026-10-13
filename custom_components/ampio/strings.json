@@ -1,0 +1,57 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Ampio",
+        "description": "Connect Home Assistant to your local Ampio server.",
+        "data": {
+          "host": "Server address",
+          "port": "MQTT port",
+          "websocket": "Use MQTT over WebSocket",
+          "username": "Ampio username",
+          "password": "Ampio password"
+        },
+        "data_description": {
+          "host": "Local IP address or hostname of the Ampio server.",
+          "port": "Use 1883 for MQTT TCP or 9001 for WebSocket, according to your Ampio setup.",
+          "websocket": "Enable only when connecting through the Ampio WebSocket listener.",
+          "username": "An Ampio account with access to the devices you want to expose.",
+          "password": "Password for that Ampio account."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate Ampio",
+        "description": "Ampio rejected the password for {username}. Enter the current password.",
+        "data": {
+          "password": "Ampio password"
+        },
+        "data_description": {
+          "password": "Password for the Ampio account already configured in Home Assistant."
+        }
+      },
+      "reconfigure": {
+        "title": "Update Ampio address",
+        "description": "Change how Home Assistant reaches this same Ampio server.",
+        "data": {
+          "host": "Server address",
+          "port": "MQTT port",
+          "websocket": "Use MQTT over WebSocket"
+        },
+        "data_description": {
+          "host": "Local IP address or hostname of the Ampio server.",
+          "port": "Use 1883 for MQTT TCP or 9001 for WebSocket, according to your Ampio setup.",
+          "websocket": "Enable only when connecting through the Ampio WebSocket listener."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to Ampio",
+      "invalid_auth": "Invalid Ampio credentials",
+      "unsupported_server": "Ampio server does not support Home Assistant command attribution"
+    },
+    "abort": {
+      "already_configured": "This Ampio server is already configured",
+      "wrong_gateway": "This address belongs to a different Ampio server"
+    }
+  }
+}
