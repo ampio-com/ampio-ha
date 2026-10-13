@@ -127,8 +127,8 @@ def setup_dynamic_entities(
         desired = {item_id for item_id, item in source(client).items() if matches(item, client)}
 
         def unique_id_for(item_id: int) -> str:
-            if feature == "scene":
-                return f"{client.gateway_id}:scene:{item_id}"
+            if feature in ("scene", "condition", "irrigation"):
+                return f"{client.gateway_id}:{feature}:{item_id}"
             return f"{client.gateway_id}:{item_id}:{feature}"
 
         removed = [item_id for item_id in active if item_id not in desired]
@@ -140,8 +140,8 @@ def setup_dynamic_entities(
         for item in er.async_entries_for_config_entry(registry, entry.entry_id):
             if item.domain != platform or item.platform != DOMAIN or item.unique_id in expected_ids:
                 continue
-            if feature == "scene":
-                if not item.unique_id.startswith(f"{client.gateway_id}:scene:"):
+            if feature in ("scene", "condition", "irrigation"):
+                if not item.unique_id.startswith(f"{client.gateway_id}:{feature}:"):
                     continue
             elif not item.unique_id.endswith(f":{feature}") or not item.unique_id.startswith(f"{client.gateway_id}:"):
                 continue

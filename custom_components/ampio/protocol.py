@@ -19,8 +19,8 @@ COMMAND_TIMEOUT = 8.0
 _PUBLISH_TIMEOUT = 5.0
 # Mosquitto replays retained messages into a per-client QoS 1 queue of 1000
 # and drops the surplus. The raw module tree exceeds that queue, so a client
-# that subscribes to it has to use QoS 0. These three filters do not: md5 and
-# data/info are retained but tiny, and per-object state is not retained. QoS 1
+# that subscribes to it has to use QoS 0. These filters do not: md5 and
+# data/info are retained but tiny, and object state and condition replies are not. QoS 1
 # is what keeps a live push across a short socket drop.
 _SUBSCRIBE_QOS = 1
 _RECONNECT_MAX_DELAY = 15
@@ -80,6 +80,8 @@ class AmpioClient:
         self.hardware: dict[int, dict[str, Any]] = {}
         self.params: dict[int, dict[str, Any]] = {}
         self.scenes: dict[int, dict[str, Any]] = {}
+        self.conditions: dict[int, dict[str, Any]] = {}
+        self.irrigations: dict[int, dict[str, Any]] = {}
         self.states: dict[int, dict[str, Any]] = {}
         self.catalog_generation = 0
         self._catalog_loaded = False
@@ -195,7 +197,7 @@ class AmpioClient:
         # means the packet was queued, not that the broker granted the filter.
         self._subscribe_mids.clear()
         root = f"ampio/fromDB/{self.username}"
-        for topic in (f"{root}/data/#", f"{root}/md5/#", f"{root}/ob/#"):
+        for topic in (f"{root}/data/#", f"{root}/md5/#", f"{root}/ob/#", f"{root}/conditions/#"):
             result, mid = client.subscribe(topic, qos=_SUBSCRIBE_QOS)
             if result != mqtt.MQTT_ERR_SUCCESS:
                 self._loop.call_soon_threadsafe(self._reject, AmpioError("Cannot subscribe to the Ampio catalog"))
@@ -319,6 +321,18 @@ class AmpioClient:
             self._continue_section("device_details")
         elif suffix == "data/states":
             self._store_states(payload)
+        elif suffix in ("conditions/1", "conditions/2"):
+            section = f"conditions_{suffix[-1]}"
+            if isinstance(payload, dict) and payload.get("error") in (True, "true"):
+                _LOGGER.warning("Ampio %s query failed", section)
+                self._continue_section(section)
+                return
+            if self._accept_section(section):
+                items = self._items(payload)
+                if items is not None:
+                    self._store_conditions(suffix[-1], items)
+                    catalog_changed = True
+            self._continue_section(section)
         elif suffix.startswith("data/"):
             section = suffix[5:]
             if section in CATALOG_SECTIONS:
@@ -376,6 +390,9 @@ class AmpioClient:
         if section not in self._section_dirty:
             return
         self._section_dirty.discard(section)
+        if section in ("conditions_1", "conditions_2"):
+            self._spawn(self._republish_conditions(section[-1]))
+            return
         self._request_section(section)
 
     def _store_device_details(self, items: list[dict[str, Any]]) -> None:
@@ -404,6 +421,14 @@ class AmpioClient:
             self.scenes = {int(item["id"]): item for item in items if self._valid_id(item)}
             self._scenes_loaded = True
         return True
+
+    def _store_conditions(self, type_id: str, items: list[dict[str, Any]]) -> None:
+        """Type 1 is watering and type 2 is an automation. The server already applied prawa."""
+        stored = {int(item["id"]): item for item in items if self._valid_id(item)}
+        if type_id == "1":
+            self.irrigations = stored
+        else:
+            self.conditions = stored
 
     def _store_states(self, payload: Any) -> None:
         items = self._items(payload)
@@ -445,16 +470,16 @@ class AmpioClient:
         return "states" in self._section_dirty
 
     async def refresh(self) -> None:
-        """Ask the server again for objects, parameters, scenes and states."""
+        """Ask the server again for objects, parameters, scenes, states and run lists."""
         if not self.available:
             raise AmpioError("Ampio MQTT connection is unavailable")
         for section in ("device_details", "params_devices", "scenes"):
             if not self._arm_section(section):
                 continue
             await self._publish_section(section)
-        if not self._arm_states():
-            return
-        await self._publish_states()
+        if self._arm_states():
+            await self._publish_states()
+        await self._request_condition_lists()
 
     async def _request_initial(self) -> None:
         """Publish the first catalog requests once the subscriptions are granted."""
@@ -469,6 +494,32 @@ class AmpioClient:
             if self._state_request is None:
                 self._arm_states()
                 await self._publish_states()
+            await self._request_condition_lists()
+        except AmpioError as err:
+            self._fail_request(err)
+
+    async def _request_condition_lists(self) -> None:
+        """Watering is conditions type 1. Automations are type 2."""
+        for type_id in ("1", "2"):
+            section = f"conditions_{type_id}"
+            if section in self._section_sent:
+                continue
+            self._arm_section(section)
+            await self._publish_conditions(type_id)
+
+    async def _publish_conditions(self, type_id: str) -> None:
+        try:
+            await self._publish_acked(f"ampio/control/{self.username}/get_conditions/{type_id}", "")
+        except AmpioError:
+            self._section_sent.pop(f"conditions_{type_id}", None)
+            raise
+
+    async def _republish_conditions(self, type_id: str) -> None:
+        section = f"conditions_{type_id}"
+        if not self.available or not self._arm_section(section):
+            return
+        try:
+            await self._publish_conditions(type_id)
         except AmpioError as err:
             self._fail_request(err)
 
@@ -596,6 +647,14 @@ class AmpioClient:
             scene_id = path.removeprefix("/api/run/scene/")
             if not scene_id.isdigit() or int(scene_id) <= 0 or int(scene_id) not in self.scenes:
                 raise AmpioError("Ampio scene is not authorized")
+            return None
+        if path.startswith("/api/run/condition/"):
+            condition_id = path.removeprefix("/api/run/condition/")
+            if not condition_id.isdigit() or int(condition_id) <= 0:
+                raise AmpioError("Ampio condition is not authorized")
+            number = int(condition_id)
+            if number not in self.conditions and number not in self.irrigations:
+                raise AmpioError("Ampio condition is not authorized")
             return None
         raise ValueError("Unsupported Ampio command")
 

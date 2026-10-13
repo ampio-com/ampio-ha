@@ -73,6 +73,16 @@
           "scene_id": { "name": "Numer sceny" }
         }
       },
+      "condition": {
+        "state_attributes": {
+          "condition_id": { "name": "Numer warunku" }
+        }
+      },
+      "irrigation": {
+        "state_attributes": {
+          "irrigation_id": { "name": "Numer podlewania" }
+        }
+      },
       "refresh": {
         "name": "Odśwież"
       }

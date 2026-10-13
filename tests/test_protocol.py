@@ -173,8 +173,36 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
         await client.refresh()
         self.assertEqual(
             [item[1] for item in client._client.published],
-            ["device_details", "params_devices", "scenes", "api/json/states"],
+            ["device_details", "params_devices", "scenes", "api/json/states", "", ""],
         )
+        self.assertEqual(
+            [item[0] for item in client._client.published[-2:]],
+            ["ampio/control/anna/get_conditions/1", "ampio/control/anna/get_conditions/2"],
+        )
+
+    async def test_conditions_and_irrigation_run_as_separate_lists(self):
+        client = protocol.AmpioClient("localhost", 1883, "anna", "secret")
+        client._connected_ok()
+        client._handle_message(
+            "ampio/fromDB/anna/conditions/1",
+            {"List": [{"id": 4, "name": "Trawnik", "active": 1, "type": 1}]},
+        )
+        client._handle_message(
+            "ampio/fromDB/anna/conditions/2",
+            {"List": [{"id": 8, "name": "Wieczór", "active": 1, "type": 2}]},
+        )
+        self.assertEqual(set(client.irrigations), {4})
+        self.assertEqual(set(client.conditions), {8})
+        client.command("/api/run/condition/4")
+        client.command("/api/run/condition/8")
+        self.assertEqual(
+            [item[1] for item in client._client.published[-2:]],
+            ["/api/run/condition/4", "/api/run/condition/8"],
+        )
+        with self.assertRaises(protocol.AmpioError):
+            client.command("/api/run/condition/9")
+        client._handle_message("ampio/fromDB/anna/conditions/1", {"error": True, "List": []})
+        self.assertEqual(set(client.irrigations), {4})
 
     async def test_failed_device_details_does_not_clear_the_catalog(self):
         client = protocol.AmpioClient("localhost", 1883, "anna", "secret")
