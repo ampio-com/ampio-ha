@@ -8,7 +8,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryError, Co
 
 from .const import CONF_PORT, CONF_WEBSOCKET, PLATFORMS
 from .entity import remove_empty_devices
-from .protocol import AmpioAuthError, AmpioClient, AmpioCompatibilityError, AmpioError
+from ampio_python import AmpioAuthError, AmpioClient, AmpioCompatibilityError, AmpioError
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

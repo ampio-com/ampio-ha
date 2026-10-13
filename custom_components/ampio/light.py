@@ -9,7 +9,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .entity import AmpioEntity, async_send_command, setup_dynamic_entities
 from .mapping import is_light, state_number
-from .protocol import AmpioClient
+from ampio_python import AmpioClient
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:

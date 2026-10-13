@@ -12,9 +12,7 @@ rules:
   common-modules: done
   config-flow: done
   config-flow-test-coverage: done
-  dependency-transparency:
-    status: todo
-    comment: ampio-python is Apache-2.0 and built in CI, but it is not on PyPI yet. Core must pin the published package instead of the mirrored protocol.py.
+  dependency-transparency: done
   docs-actions:
     status: exempt
     comment: Ampio does not provide its own actions, triggers or conditions.

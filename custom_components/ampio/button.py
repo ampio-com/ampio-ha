@@ -14,7 +14,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import DOMAIN
 from .entity import AmpioEntity, async_send_command, setup_dynamic_entities
 from .mapping import impulse_command, is_impulse, writable
-from .protocol import AmpioClient, AmpioError
+from ampio_python import AmpioClient, AmpioError
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:

@@ -37,6 +37,6 @@ In **Settings → Devices & services**, open Ampio and select **Delete**. Then r
 
 ## Development
 
-The independent `ampio-python` source is in `packages/ampio-python`; `scripts/sync_protocol.py` mirrors it into the HACS component. Edit the package source and run the sync script. Publishing a GitHub release uploads the package to PyPI after the trusted publisher is configured. Home Assistant Core must depend on that package. The HACS component keeps the mirror so it installs before the package exists on PyPI.
+The protocol client is the PyPI package `ampio-python`. Home Assistant installs `ampio-python==0.1.0` from the integration manifest. Edit `packages/ampio-python` and publish a new release to ship protocol changes.
 
 Run `python3 -m compileall custom_components/ampio` and `python3 -m unittest discover -s tests`. A hardware pilot must verify ACL isolation, catalog changes, reboot/reconnect, action attribution, device ranges and dictionaries. See `docs/CORE_HANDOFF.md` for the later Core submission scope.

@@ -15,7 +15,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .mapping import hardware_details, hardware_id, hardware_name
-from .protocol import AmpioClient, AmpioError, AmpioTimeoutError
+from ampio_python import AmpioClient, AmpioError, AmpioTimeoutError
 
 StatePredicate = Callable[[dict[str, Any]], bool]
 

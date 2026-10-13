@@ -12,10 +12,9 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
-      - run: python scripts/sync_protocol.py --check
       - run: python -m compileall -q custom_components/ampio packages/ampio-python/src
       - run: python -m unittest discover -s tests -p test_protocol.py -v
       - run: python -m pip install build
       - run: python -m build packages/ampio-python
-      - run: python -m pip install -r requirements-test.txt
+      - run: python -m pip install ./packages/ampio-python -r requirements-test.txt
       - run: python -m pytest tests/ha -q

@@ -9,7 +9,7 @@ from homeassistant.const import CONF_PASSWORD
 from homeassistant.core import HomeAssistant
 
 from custom_components.ampio.const import DOMAIN
-from custom_components.ampio.protocol import AmpioAuthError, AmpioError
+from ampio_python import AmpioAuthError, AmpioError
 
 from .test_config_flow import USER_INPUT
 

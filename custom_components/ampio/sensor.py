@@ -9,7 +9,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .entity import AmpioEntity, setup_dynamic_entities
 from .mapping import NUMERIC_SENSOR_TYPES, is_descriptive_sensor, state_number
-from .protocol import AmpioClient
+from ampio_python import AmpioClient
 
 
 def _supported(obj: dict, _client: AmpioClient) -> bool:

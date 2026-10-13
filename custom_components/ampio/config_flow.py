@@ -10,7 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, TextSelectorType
 
 from .const import CONF_PORT, CONF_WEBSOCKET, DOMAIN
-from .protocol import AmpioAuthError, AmpioClient, AmpioCompatibilityError, AmpioError
+from ampio_python import AmpioAuthError, AmpioClient, AmpioCompatibilityError, AmpioError
 
 
 async def validate_input(hass: HomeAssistant, data: dict) -> str:

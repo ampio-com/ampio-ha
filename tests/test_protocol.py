@@ -10,7 +10,8 @@ import types
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1] / "custom_components" / "ampio"
+COMPONENT = Path(__file__).resolve().parents[1] / "custom_components" / "ampio"
+CLIENT = Path(__file__).resolve().parents[1] / "packages" / "ampio-python" / "src" / "ampio_python"
 
 
 class _Ack:
@@ -65,7 +66,7 @@ sys.modules.setdefault("paho", types.ModuleType("paho"))
 sys.modules.setdefault("paho.mqtt", types.ModuleType("paho.mqtt"))
 sys.modules["paho.mqtt.client"] = mqtt
 
-spec = importlib.util.spec_from_file_location("ampio_protocol_test", ROOT / "protocol.py")
+spec = importlib.util.spec_from_file_location("ampio_protocol_test", CLIENT / "client.py")
 protocol = importlib.util.module_from_spec(spec)
 assert spec and spec.loader
 spec.loader.exec_module(protocol)
@@ -303,6 +304,7 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(client.states[12]["state"], "255")
 
 
+ROOT = COMPONENT
 spec_dict = importlib.util.spec_from_file_location("ampio_dictionary_test", ROOT / "dictionary.py")
 dictionary = importlib.util.module_from_spec(spec_dict)
 assert spec_dict and spec_dict.loader
