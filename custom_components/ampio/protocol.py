@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import Callable
+import uuid
+from collections.abc import Callable, Coroutine
 from typing import Any
 
 import paho.mqtt.client as mqtt
@@ -15,6 +16,14 @@ CATALOG_SECTIONS = ("device_details", "params_devices", "groups", "group_devices
 STORED_SECTIONS = ("params_devices", "scenes")
 MAX_PAYLOAD_BYTES = 2_000_000
 COMMAND_TIMEOUT = 8.0
+_PUBLISH_TIMEOUT = 5.0
+# Mosquitto replays retained messages into a per-client QoS 1 queue of 1000
+# and drops the surplus. The raw module tree exceeds that queue, so a client
+# that subscribes to it has to use QoS 0. These three filters do not: md5 and
+# data/info are retained but tiny, and per-object state is not retained. QoS 1
+# is what keeps a live push across a short socket drop.
+_SUBSCRIBE_QOS = 1
+_RECONNECT_MAX_DELAY = 15
 StatePredicate = Callable[[dict[str, Any]], bool]
 
 
@@ -45,12 +54,22 @@ class AmpioClient:
         self.username = username
         self._password = password
         self._loop = asyncio.get_running_loop()
-        self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, transport="websockets" if websocket else "tcp")
+        # One id for every reconnect of this entry. A fresh id on each attempt
+        # leaves the broker holding the previous session until it expires.
+        self._client_id = f"ampio-ha-{uuid.uuid4().hex}"
+        self._client = mqtt.Client(
+            mqtt.CallbackAPIVersion.VERSION2,
+            client_id=self._client_id,
+            transport="websockets" if websocket else "tcp",
+        )
         self._client.username_pw_set(username, password)
         self._client.on_connect = self._on_connect
+        self._client.on_subscribe = self._on_subscribe
         self._client.on_disconnect = self._on_disconnect
         self._client.on_message = self._on_message
-        self._client.reconnect_delay_set(min_delay=2, max_delay=30)
+        self._client.reconnect_delay_set(min_delay=2, max_delay=_RECONNECT_MAX_DELAY)
+        self._subscribe_mids: dict[int, str] = {}
+        self._background: set[asyncio.Task[None]] = set()
         self._connected: asyncio.Future[None] = self._loop.create_future()
         self._ready: asyncio.Future[None] = self._loop.create_future()
         self._running = False
@@ -120,7 +139,18 @@ class AmpioClient:
             self._client.loop_start()
             await asyncio.wait_for(self._connected, timeout)
             await asyncio.wait_for(self._ready, timeout)
-        except (OSError, TimeoutError, AmpioError):
+        except asyncio.CancelledError:
+            # Python 3.11 keeps the cancellation pending, so the cleanup await
+            # would be cancelled too and the paho thread would keep running.
+            current = asyncio.current_task()
+            if current is not None:
+                while current.uncancel():
+                    pass
+            try:
+                await self.disconnect()
+            finally:
+                raise
+        except Exception:
             await self.disconnect()
             raise
 
@@ -129,9 +159,28 @@ class AmpioClient:
         self.available = False
         self._states_loaded = False
         self._fail_waiters(AmpioError("Ampio MQTT connection is unavailable"))
+        tasks = tuple(self._background)
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
         await asyncio.to_thread(self._client.disconnect)
         await asyncio.to_thread(self._client.loop_stop)
         self._notify()
+
+    def _spawn(self, coro: Coroutine[Any, Any, None]) -> None:
+        """Keep a strong reference. The loop only holds tasks weakly."""
+        task = self._loop.create_task(coro)
+        self._background.add(task)
+        task.add_done_callback(self._finish_background)
+
+    def _finish_background(self, task: asyncio.Task[None]) -> None:
+        self._background.discard(task)
+        if task.cancelled():
+            return
+        error = task.exception()
+        if error is not None:
+            _LOGGER.error("Ampio background request failed", exc_info=error)
 
     def _on_connect(self, client: mqtt.Client, _userdata: Any, _flags: Any, reason_code: Any, _properties: Any) -> None:
         if getattr(reason_code, "is_failure", False):
@@ -142,19 +191,37 @@ class AmpioClient:
                 error = AmpioError(f"Cannot connect to Ampio: {reason_code}")
             self._loop.call_soon_threadsafe(self._reject, error)
             return
+        # Requests go out only after SUBACK. subscribe() returning success
+        # means the packet was queued, not that the broker granted the filter.
+        self._subscribe_mids.clear()
         root = f"ampio/fromDB/{self.username}"
         for topic in (f"{root}/data/#", f"{root}/md5/#", f"{root}/ob/#"):
-            result, _ = client.subscribe(topic, qos=1)
+            result, mid = client.subscribe(topic, qos=_SUBSCRIBE_QOS)
             if result != mqtt.MQTT_ERR_SUCCESS:
-                self._loop.call_soon_threadsafe(self._reject, AmpioError(f"Cannot subscribe: {topic}"))
+                self._loop.call_soon_threadsafe(self._reject, AmpioError("Cannot subscribe to the Ampio catalog"))
                 return
-        self._loop.call_soon_threadsafe(self._connected_ok)
-        client.publish(f"ampio/control/{self.username}/info", "info", qos=1)
-        for section in CATALOG_SECTIONS:
-            if section not in self._section_sent:
-                self._send_section_request(client, section)
-        if self._state_request is None:
-            self._send_state_request(client)
+            self._subscribe_mids[mid] = topic
+
+    def _on_subscribe(
+        self, _client: mqtt.Client, _userdata: Any, mid: int, reason_codes: Any, _properties: Any,
+    ) -> None:
+        topic = self._subscribe_mids.pop(mid, None)
+        if topic is None:
+            return
+        codes = reason_codes if isinstance(reason_codes, (list, tuple)) else [reason_codes]
+        if any(_suback_failed(code) for code in codes):
+            _LOGGER.warning("Ampio broker rejected subscription to %s", topic)
+            self._loop.call_soon_threadsafe(self._reject, AmpioError("Ampio broker rejected a subscription"))
+            return
+        if not self._subscribe_mids:
+            self._loop.call_soon_threadsafe(self._subscriptions_ready)
+
+    def _subscriptions_ready(self) -> None:
+        """First moment the broker has granted every filter. Runs on the HA loop."""
+        if not self._running:
+            return
+        self._connected_ok()
+        self._spawn(self._request_initial())
 
     def _connected_ok(self) -> None:
         self.available = True
@@ -196,21 +263,28 @@ class AmpioClient:
         self._notify()
 
     def _on_message(self, _client: mqtt.Client, _userdata: Any, message: mqtt.MQTTMessage) -> None:
-        payload_bytes = message.payload or b""
+        payload_bytes = bytes(message.payload or b"")
         if len(payload_bytes) > MAX_PAYLOAD_BYTES:
             _LOGGER.warning("Ampio payload on %s exceeds %s bytes", message.topic, MAX_PAYLOAD_BYTES)
             return
-        if f"ampio/fromDB/{self.username}/md5/" in message.topic:
-            self._loop.call_soon_threadsafe(self._handle_message, message.topic, None)
-            return
-        try:
-            payload = json.loads(payload_bytes)
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            _LOGGER.warning("Invalid JSON on Ampio topic %s", message.topic)
-            return
-        self._loop.call_soon_threadsafe(self._handle_message, message.topic, payload)
+        # Decode on the HA loop. A failure in one payload must not take the session down.
+        self._loop.call_soon_threadsafe(
+            self._deliver, message.topic, payload_bytes, bool(getattr(message, "retain", False)),
+        )
 
-    def _handle_message(self, topic: str, payload: Any) -> None:
+    def _deliver(self, topic: str, payload_bytes: bytes, retained: bool) -> None:
+        try:
+            if f"ampio/fromDB/{self.username}/md5/" in topic:
+                payload = None
+            else:
+                payload = json.loads(payload_bytes)
+            self._handle_message(topic, payload, retained=retained)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            _LOGGER.warning("Invalid JSON on Ampio topic %s", topic)
+        except Exception:
+            _LOGGER.exception("Ampio message on %s dropped", topic)
+
+    def _handle_message(self, topic: str, payload: Any, *, retained: bool = False) -> None:
         root = f"ampio/fromDB/{self.username}/"
         if not topic.startswith(root):
             return
@@ -261,9 +335,14 @@ class AmpioClient:
         elif suffix.startswith("md5/"):
             section = suffix[4:]
             if section in ("devices", "device_details"):
-                self._request_section("device_details")
-            elif section in CATALOG_SECTIONS:
-                self._request_section(section)
+                section = "device_details"
+            elif section not in CATALOG_SECTIONS:
+                return
+            # The broker replays a retained digest on every subscribe. That is
+            # the catalog we are already fetching, not a save during the fetch.
+            if retained and section in self._section_sent:
+                return
+            self._request_section(section)
             return
         else:
             return
@@ -359,37 +438,97 @@ class AmpioClient:
     def _section_dirty_states(self) -> bool:
         return "states" in self._section_dirty
 
-    def refresh(self) -> None:
+    async def refresh(self) -> None:
         """Ask the server again for objects, parameters, scenes and states."""
         if not self.available:
             raise AmpioError("Ampio MQTT connection is unavailable")
         for section in ("device_details", "params_devices", "scenes"):
-            self._request_section(section)
-        self._request_states()
+            if not self._arm_section(section):
+                continue
+            await self._publish_section(section)
+        if not self._arm_states():
+            return
+        await self._publish_states()
+
+    async def _request_initial(self) -> None:
+        """Publish the first catalog requests once the subscriptions are granted."""
+        try:
+            await self._publish_acked(f"ampio/control/{self.username}/info", "info")
+            for section in CATALOG_SECTIONS:
+                # A retained md5 may already have armed this section.
+                if section in self._section_sent:
+                    continue
+                self._arm_section(section)
+                await self._publish_section(section)
+            if self._state_request is None:
+                self._arm_states()
+                await self._publish_states()
+        except AmpioError as err:
+            self._fail_request(err)
 
     def _request_section(self, section: str) -> None:
+        if not self._arm_section(section):
+            return
+        self._spawn(self._publish_section_guarded(section))
+
+    def _arm_section(self, section: str) -> bool:
+        """Reserve one in-flight request. False means a newer one must wait."""
         if section in self._section_sent:
             self._section_dirty.add(section)
-            return
-        self._send_section_request(self._client, section)
-
-    def _send_section_request(self, client: mqtt.Client, section: str) -> None:
+            return False
         self._section_epoch += 1
         self._section_sent[section] = self._section_epoch
-        client.publish(f"ampio/control/{self.username}/data", section, qos=1)
+        return True
+
+    async def _publish_section(self, section: str) -> None:
+        try:
+            await self._publish_acked(f"ampio/control/{self.username}/data", section)
+        except AmpioError:
+            self._section_sent.pop(section, None)
+            raise
+
+    async def _publish_section_guarded(self, section: str) -> None:
+        try:
+            await self._publish_section(section)
+        except AmpioError as err:
+            self._fail_request(err)
 
     def _request_states(self) -> None:
+        if not self._arm_states():
+            return
+        self._spawn(self._publish_states_guarded())
+
+    def _arm_states(self) -> bool:
         if self._state_request is not None:
             self._section_dirty.add("states")
-            return
-        self._send_state_request(self._client)
-
-    def _send_state_request(self, client: mqtt.Client) -> None:
+            return False
         self._section_epoch += 1
         self._state_request = self._section_epoch
         self._states_changed_during_request.clear()
         self._section_dirty.discard("states")
-        client.publish(f"ampio/control/{self.username}/states", "api/json/states", qos=1)
+        return True
+
+    async def _publish_states(self) -> None:
+        try:
+            await self._publish_acked(f"ampio/control/{self.username}/states", "api/json/states")
+        except AmpioError:
+            self._state_request = None
+            raise
+
+    async def _publish_states_guarded(self) -> None:
+        try:
+            await self._publish_states()
+        except AmpioError as err:
+            self._fail_request(err)
+
+    def _fail_request(self, error: AmpioError) -> None:
+        """A missing acknowledgement before the first snapshot fails setup."""
+        if not self._running:
+            return
+        if not self._ready.done():
+            self._reject(error)
+            return
+        _LOGGER.warning("Ampio request was not acknowledged by the broker")
 
     @staticmethod
     def _items(payload: Any) -> list[dict[str, Any]] | None:
@@ -413,12 +552,24 @@ class AmpioClient:
         except (KeyError, TypeError, ValueError):
             return False
 
-    def _publish(self, topic: str, payload: str) -> None:
+    def _publish(self, topic: str, payload: str) -> mqtt.MQTTMessageInfo:
+        """Queue a QoS 1 publish. The returned handle is not yet a broker acknowledgement."""
         if not self.available:
             raise AmpioError("Ampio MQTT connection is unavailable")
         result = self._client.publish(topic, payload, qos=1)
         if result.rc != mqtt.MQTT_ERR_SUCCESS:
-            raise AmpioError(f"MQTT publish failed: {result.rc}")
+            raise AmpioError("MQTT publish failed")
+        return result
+
+    async def _publish_acked(self, topic: str, payload: str) -> None:
+        """Publish and return only after the broker's PUBACK, or time out.
+
+        paho's wait does not raise on timeout, so the published flag is the deadline.
+        """
+        result = self._publish(topic, payload)
+        await asyncio.to_thread(result.wait_for_publish, _PUBLISH_TIMEOUT)
+        if not result.is_published():
+            raise AmpioTimeoutError("Broker did not acknowledge the publish")
 
     def _authorize(self, path: str) -> int | None:
         if path.startswith("/api/set/"):
@@ -446,7 +597,7 @@ class AmpioClient:
             future = self._loop.create_future()
             self._waiters.setdefault(object_id, []).append((predicate, future))
         try:
-            self._publish(f"ampio/control/{self.username}/ha/api", path)
+            await self._publish_acked(f"ampio/control/{self.username}/ha/api", path)
             if future is None:
                 return
             await asyncio.wait_for(future, timeout)
@@ -459,9 +610,12 @@ class AmpioClient:
                 ]
 
     def command(self, path: str) -> None:
-        """Publish a command without waiting for a state echo."""
+        """Publish a command and wait until the broker accepts it."""
         self._authorize(path)
-        self._publish(f"ampio/control/{self.username}/ha/api", path)
+        result = self._publish(f"ampio/control/{self.username}/ha/api", path)
+        result.wait_for_publish(_PUBLISH_TIMEOUT)
+        if not result.is_published():
+            raise AmpioTimeoutError("Broker did not acknowledge the publish")
 
     def _resolve_waiters(self, object_id: int) -> None:
         state = self.states.get(object_id, {})
@@ -484,6 +638,15 @@ class AmpioClient:
                 if not future.done():
                     future.set_exception(error)
         self._waiters.clear()
+
+
+def _suback_failed(reason_code: Any) -> bool:
+    if getattr(reason_code, "is_failure", False):
+        return True
+    try:
+        return int(getattr(reason_code, "value", reason_code)) >= 0x80
+    except (TypeError, ValueError):
+        return False
 
 
 def _auth_rejected(reason_code: Any) -> bool:

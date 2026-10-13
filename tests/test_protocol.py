@@ -13,9 +13,23 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1] / "custom_components" / "ampio"
 
 
+class _Ack:
+    def __init__(self, published: bool = True) -> None:
+        self.rc = 0
+        self._published = published
+
+    def wait_for_publish(self, _timeout=None) -> None:
+        return None
+
+    def is_published(self) -> bool:
+        return self._published
+
+
 class FakeClient:
     def __init__(self, *args, **kwargs):
         self.published = []
+        self.stopped = False
+        self.ack = True
 
     def username_pw_set(self, *_args):
         pass
@@ -23,9 +37,12 @@ class FakeClient:
     def reconnect_delay_set(self, **_kwargs):
         pass
 
+    def connect(self, *_args):
+        pass
+
     def publish(self, topic, payload, **_kwargs):
         self.published.append((topic, payload))
-        return types.SimpleNamespace(rc=0)
+        return _Ack(self.ack)
 
     def subscribe(self, *_args, **_kwargs):
         return 0, 1
@@ -33,8 +50,11 @@ class FakeClient:
     def disconnect(self):
         pass
 
-    def loop_stop(self):
+    def loop_start(self):
         pass
+
+    def loop_stop(self):
+        self.stopped = True
 
 
 mqtt = types.ModuleType("paho.mqtt.client")
@@ -87,6 +107,7 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
         client._connected_ok()
         message = types.SimpleNamespace(topic="ampio/fromDB/anna/md5/devices", payload=b"abc123")
         client._on_message(client._client, None, message)
+        await asyncio.sleep(0)
         await asyncio.sleep(0)
         self.assertEqual(client._client.published[-1], ("ampio/control/anna/data", "device_details"))
 
@@ -149,7 +170,7 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
         client = protocol.AmpioClient("localhost", 1883, "anna", "secret")
         client._connected_ok()
         client._client.published.clear()
-        client.refresh()
+        await client.refresh()
         self.assertEqual(
             [item[1] for item in client._client.published],
             ["device_details", "params_devices", "scenes", "api/json/states"],
@@ -176,6 +197,63 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(set(client.catalog), {12, 13})
         self.assertEqual(set(client.hardware), {7})
         self.assertEqual(client.hardware[7]["nazwa_urzadzenia"], "Salon")
+
+    async def test_live_md5_discards_the_inflight_catalog_and_refetches(self):
+        client = protocol.AmpioClient("localhost", 1883, "anna", "secret")
+        client._connected_ok()
+        client._section_sent["device_details"] = 1
+        message = types.SimpleNamespace(
+            topic="ampio/fromDB/anna/md5/devices", payload=b"new", retain=False,
+        )
+        client._on_message(client._client, None, message)
+        await asyncio.sleep(0)
+        self.assertIn("device_details", client._section_dirty)
+        client._handle_message(
+            "ampio/fromDB/anna/data/device_details",
+            {"List": [{"id": 1, "prawa": "1", "typ_komponentu": "przekaznik"}]},
+        )
+        self.assertEqual(client.catalog, {})
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        self.assertEqual(client._client.published[-1], ("ampio/control/anna/data", "device_details"))
+        self.assertIn("device_details", client._section_sent)
+
+    async def test_retained_digest_does_not_discard_the_inflight_catalog(self):
+        client = protocol.AmpioClient("localhost", 1883, "anna", "secret")
+        client._connected_ok()
+        client._section_sent["device_details"] = 1
+        message = types.SimpleNamespace(
+            topic="ampio/fromDB/anna/md5/devices", payload=b"abc123", retain=True,
+        )
+        client._on_message(client._client, None, message)
+        await asyncio.sleep(0)
+        self.assertNotIn("device_details", client._section_dirty)
+        self.assertEqual(client._client.published, [])
+
+    async def test_broker_rejecting_a_subscription_fails_setup(self):
+        client = protocol.AmpioClient("localhost", 1883, "anna", "secret")
+        client._subscribe_mids[7] = "ampio/fromDB/anna/data/#"
+        client._on_subscribe(client._client, None, 7, [types.SimpleNamespace(is_failure=True, value=128)], None)
+        await asyncio.sleep(0)
+        self.assertIsInstance(client._connected.exception(), protocol.AmpioError)
+
+    async def test_unacknowledged_publish_is_an_error(self):
+        client = protocol.AmpioClient("localhost", 1883, "anna", "secret")
+        client._connected_ok()
+        client.catalog[12] = {"id": 12}
+        client._client.ack = False
+        with self.assertRaises(protocol.AmpioTimeoutError):
+            await client.async_confirm("/api/set/12/setValue/1")
+
+    async def test_cancelled_connect_stops_the_session(self):
+        client = protocol.AmpioClient("localhost", 1883, "anna", "secret")
+        task = asyncio.create_task(client.connect(timeout=5))
+        await asyncio.sleep(0.05)
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        self.assertFalse(client._running)
+        self.assertTrue(client._client.stopped)
 
     async def test_live_state_survives_older_snapshot(self):
         client = protocol.AmpioClient("localhost", 1883, "anna", "secret")

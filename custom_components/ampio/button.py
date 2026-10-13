@@ -124,6 +124,6 @@ class AmpioRefreshButton(ButtonEntity):
 
     async def async_press(self) -> None:
         try:
-            self.client.refresh()
+            await self.client.refresh()
         except AmpioError as err:
             raise HomeAssistantError(str(err)) from err
