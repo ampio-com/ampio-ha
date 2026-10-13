@@ -200,6 +200,8 @@ class MappingTests(unittest.TestCase):
         self.assertTrue(mapping.is_impulse(impulse, params))
         self.assertFalse(mapping.is_stable_switch(impulse, params))
         self.assertEqual(mapping.impulse_command(impulse, params), "/api/set/2/setValue/255/5")
+        timed = {**impulse, "czas": 8}
+        self.assertEqual(mapping.impulse_command(timed, {}), "/api/set/2/setValue/255/8")
 
     def test_dictionary_led_is_not_a_dimmer(self):
         led = {"id": 3, "typ_komponentu": "led", "uwagi": "0=Off=1=0;1=On=1=1;"}

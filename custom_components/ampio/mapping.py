@@ -64,8 +64,12 @@ def writable(device: dict[str, Any], params: dict[int, dict[str, Any]]) -> bool:
 
 
 def _duration(device: dict[str, Any], params: dict[int, dict[str, Any]]) -> int:
+    """Timed outputs append this value to setValue. It comes from the object row."""
+    raw = device.get("czas")
+    if raw in (None, ""):
+        raw = _params(device, params).get("czas")
     try:
-        return int(_params(device, params).get("czas") or 0)
+        return int(raw or 0)
     except (TypeError, ValueError):
         return 0
 
