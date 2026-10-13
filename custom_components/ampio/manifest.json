@@ -2,7 +2,7 @@
   "domain": "ampio",
   "name": "Ampio",
   "version": "0.1.0",
-  "codeowners": [],
+  "codeowners": ["@raw2DD4"],
   "config_flow": true,
   "documentation": "https://github.com/ampio-com/ampio-ha",
   "integration_type": "hub",

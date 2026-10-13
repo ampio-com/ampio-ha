@@ -1,0 +1,90 @@
+rules:
+  # Bronze
+  action-setup:
+    status: exempt
+    comment: Ampio does not register its own service actions. Switch, button and cover services come from the entity platforms.
+  appropriate-polling:
+    status: exempt
+    comment: States arrive on MQTT push. The integration does not poll.
+  brands:
+    status: todo
+    comment: Icon and logo files are in custom_components/ampio/brand for Home Assistant 2026.3 custom integrations. Core needs those files in home-assistant/brands.
+  common-modules: done
+  config-flow: done
+  config-flow-test-coverage: done
+  dependency-transparency:
+    status: todo
+    comment: ampio-python is Apache-2.0 and built in CI, but it is not on PyPI yet. Core must pin the published package instead of the mirrored protocol.py.
+  docs-actions:
+    status: exempt
+    comment: Ampio does not provide its own actions, triggers or conditions.
+  docs-conditions:
+    status: exempt
+    comment: Ampio does not provide its own actions, triggers or conditions.
+  docs-high-level-description:
+    status: todo
+    comment: The product description is in the repository README. Bronze needs the same page on home-assistant.io.
+  docs-installation-instructions:
+    status: todo
+    comment: Installation steps are in the repository README. Bronze needs them on home-assistant.io.
+  docs-removal-instructions:
+    status: todo
+    comment: Removal steps are in the repository README. Bronze needs them on home-assistant.io, including the optional dedicated Ampio user.
+  docs-triggers:
+    status: exempt
+    comment: Ampio does not provide its own actions, triggers or conditions.
+  entity-event-setup: done
+  entity-unique-id: done
+  has-entity-name: done
+  runtime-data: done
+  test-before-configure: done
+  test-before-setup: done
+  unique-config-entry: done
+
+  # Silver
+  action-exceptions:
+    status: exempt
+    comment: Ampio does not register its own service actions. Entity commands raise HomeAssistantError.
+  config-entry-unloading: done
+  docs-configuration-parameters:
+    status: exempt
+    comment: Connection settings live in the config entry. There is no options flow.
+  docs-installation-parameters:
+    status: todo
+    comment: Field descriptions are in strings.json. The home-assistant.io page is not published yet.
+  entity-unavailable: done
+  integration-owner: done
+  log-when-unavailable: todo
+  parallel-updates: todo
+  reauthentication-flow: done
+  test-coverage: todo
+
+  # Gold
+  devices: done
+  diagnostics: todo
+  discovery: todo
+  discovery-update-info: todo
+  docs-data-update: todo
+  docs-examples: todo
+  docs-known-limitations: todo
+  docs-supported-devices: todo
+  docs-supported-functions: todo
+  docs-troubleshooting: todo
+  docs-use-cases: todo
+  dynamic-devices: done
+  entity-category: todo
+  entity-device-class: todo
+  entity-disabled-by-default: todo
+  entity-translations: done
+  exception-translations: todo
+  icon-translations: todo
+  reconfiguration-flow: done
+  repair-issues: todo
+  stale-devices: done
+
+  # Platinum
+  async-dependency: todo
+  inject-websession:
+    status: exempt
+    comment: Ampio talks to a local MQTT broker, not an HTTP session.
+  strict-typing: todo
