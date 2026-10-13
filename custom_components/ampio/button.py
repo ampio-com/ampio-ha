@@ -60,7 +60,14 @@ class AmpioSceneButton(ButtonEntity):
         self.scene_id = scene_id
         self.ampio_key = scene_id
         self._attr_unique_id = f"{client.gateway_id}:scene:{scene_id}"
-        self.device_identifier = (DOMAIN, f"{client.gateway_id}:scene:{scene_id}")
+
+    @property
+    def name(self) -> str:
+        return str(self.client.scenes.get(self.scene_id, {}).get("sceneName") or f"Scena {self.scene_id}")
+
+    @property
+    def device_identifier(self) -> tuple[str, str]:
+        return (DOMAIN, f"{self.client.gateway_id}:scenes")
 
     @property
     def extra_state_attributes(self) -> dict[str, int]:
@@ -75,7 +82,7 @@ class AmpioSceneButton(ButtonEntity):
     def device_info(self) -> DeviceInfo:
         return DeviceInfo(
             identifiers={self.device_identifier},
-            name=str(self.client.scenes.get(self.scene_id, {}).get("sceneName") or f"Scene {self.scene_id}"),
+            name="Sceny",
             manufacturer="Ampio",
         )
 

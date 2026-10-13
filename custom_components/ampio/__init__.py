@@ -7,6 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryError, ConfigEntryNotReady
 
 from .const import CONF_PORT, CONF_WEBSOCKET, PLATFORMS
+from .entity import remove_empty_devices
 from .protocol import AmpioAuthError, AmpioClient, AmpioCompatibilityError, AmpioError
 
 
@@ -30,6 +31,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.runtime_data = client
     try:
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        remove_empty_devices(hass, entry)
     except Exception:
         await client.disconnect()
         raise

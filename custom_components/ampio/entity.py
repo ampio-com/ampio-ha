@@ -14,6 +14,7 @@ from homeassistant.helpers.entity import DeviceInfo, Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
+from .mapping import hardware_id, hardware_name
 from .protocol import AmpioClient, AmpioError, AmpioTimeoutError
 
 StatePredicate = Callable[[dict[str, Any]], bool]
@@ -31,7 +32,6 @@ class AmpioEntity(Entity):
         self.object_id = object_id
         self.ampio_key = object_id
         self._attr_unique_id = f"{client.gateway_id}:{object_id}:{feature}"
-        self.device_identifier = (DOMAIN, f"{client.gateway_id}:{object_id}")
 
     @property
     def device(self) -> dict[str, Any]:
@@ -42,15 +42,32 @@ class AmpioEntity(Entity):
         return self.client.available and self.client.states_ready and self.object_id in self.client.catalog
 
     @property
+    def name(self) -> str:
+        """Object name from Designer. The device name is the Ampio module."""
+        return str(self.device.get("opis_menu") or f"Obiekt {self.object_id}")
+
+    @property
     def extra_state_attributes(self) -> dict[str, int]:
         """Expose the Ampio server object number in the entity details."""
         return {"object_id": self.object_id}
 
     @property
+    def device_identifier(self) -> tuple[str, str]:
+        module_id = hardware_id(self.device)
+        if module_id is None:
+            return (DOMAIN, f"{self.client.gateway_id}:object:{self.object_id}")
+        return (DOMAIN, f"{self.client.gateway_id}:device:{module_id}")
+
+    @property
     def device_info(self) -> DeviceInfo:
+        module_id = hardware_id(self.device)
+        if module_id is None:
+            device_name = self.name
+        else:
+            device_name = hardware_name(self.client.catalog, module_id)
         return DeviceInfo(
             identifiers={self.device_identifier},
-            name=str(self.device.get("opis_menu") or f"Ampio {self.object_id}"),
+            name=device_name,
             manufacturer="Ampio",
         )
 
@@ -72,6 +89,16 @@ async def async_send_command(client: AmpioClient, path: str, predicate: StatePre
         raise HomeAssistantError(str(err)) from err
 
 
+def remove_empty_devices(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Drop Ampio devices that no longer have entities, including the old per-object devices."""
+    device_reg = dr.async_get(hass)
+    registry = er.async_get(hass)
+    for device in list(dr.async_entries_for_config_entry(device_reg, entry.entry_id)):
+        if er.async_entries_for_device(registry, device.id, include_disabled_entities=True):
+            continue
+        device_reg.async_remove_device(device.id)
+
+
 def setup_dynamic_entities(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -87,20 +114,9 @@ def setup_dynamic_entities(
     client: AmpioClient = entry.runtime_data
     active: dict[int, Entity] = {}
 
-    def _drop_empty_device(identifier: tuple[str, str]) -> None:
-        device_reg = dr.async_get(hass)
-        device = device_reg.async_get_device(identifiers={identifier})
-        if device is None:
-            return
-        registry = er.async_get(hass)
-        if er.async_entries_for_device(registry, device.id, include_disabled_entities=True):
-            return
-        device_reg.async_remove_device(device.id)
-
     async def _remove_entity(entity: Entity) -> None:
-        identifier = entity.device_identifier
         await entity.async_remove(force_remove=True)
-        _drop_empty_device(identifier)
+        remove_empty_devices(hass, entry)
 
     def reconcile() -> None:
         if not client.params_ready:
@@ -111,11 +127,6 @@ def setup_dynamic_entities(
             if feature == "scene":
                 return f"{client.gateway_id}:scene:{item_id}"
             return f"{client.gateway_id}:{item_id}:{feature}"
-
-        def device_id_for(item_id: int) -> str:
-            if feature == "scene":
-                return f"{client.gateway_id}:scene:{item_id}"
-            return f"{client.gateway_id}:{item_id}"
 
         removed = [item_id for item_id in active if item_id not in desired]
         for item_id in removed:
@@ -129,14 +140,10 @@ def setup_dynamic_entities(
             if feature == "scene":
                 if not item.unique_id.startswith(f"{client.gateway_id}:scene:"):
                     continue
-                item_id = item.unique_id.rsplit(":", 1)[-1]
             elif not item.unique_id.endswith(f":{feature}") or not item.unique_id.startswith(f"{client.gateway_id}:"):
                 continue
-            else:
-                item_id = item.unique_id[len(f"{client.gateway_id}:") : -len(f":{feature}")]
             registry.async_remove(item.entity_id)
-            if item_id.isdigit():
-                _drop_empty_device((DOMAIN, device_id_for(int(item_id))))
+        remove_empty_devices(hass, entry)
         added = desired - active.keys()
         if not added:
             return

@@ -195,6 +195,16 @@ class MappingTests(unittest.TestCase):
     def test_string_zero_is_numeric_off(self):
         self.assertEqual(mapping.state_number({"state": "0"}), 0.0)
 
+    def test_objects_share_one_hardware_device_name(self):
+        objects = {
+            1: {"id": 1, "id_urzadzenia": 7, "nazwa_urzadzenia": "U2Fsb24="},
+            2: {"id": 2, "id_urzadzenia": 7},
+            3: {"id": 3, "id_urzadzenia": 0},
+        }
+        self.assertEqual(mapping.hardware_id(objects[1]), 7)
+        self.assertIsNone(mapping.hardware_id(objects[3]))
+        self.assertEqual(mapping.hardware_name(objects, 7), "Salon")
+
 
 if __name__ == "__main__":
     unittest.main()

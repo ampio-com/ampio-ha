@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import math
 from typing import Any
 
@@ -108,3 +109,36 @@ def is_select(device: dict[str, Any], params: dict[int, dict[str, Any]]) -> bool
 
 def is_descriptive_sensor(device: dict[str, Any]) -> bool:
     return kind(device) == "descriptive"
+
+
+def hardware_id(device: dict[str, Any]) -> int | None:
+    """Return the Ampio module id shared by objects on one physical device."""
+    try:
+        value = int(device.get("id_urzadzenia") or 0)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
+def hardware_name(objects: dict[int, dict[str, Any]], device_id: int) -> str:
+    """Use the Designer device name when the catalog includes it."""
+    for obj in objects.values():
+        if hardware_id(obj) != device_id:
+            continue
+        label = _device_label(obj.get("nazwa_urzadzenia") or obj.get("device_name"))
+        if label:
+            return label
+    return f"Ampio {device_id}"
+
+
+def _device_label(raw: Any) -> str:
+    text = str(raw or "").strip()
+    if not text:
+        return ""
+    try:
+        decoded = base64.b64decode(text, validate=True).decode("utf-8").strip()
+    except (ValueError, UnicodeDecodeError):
+        return text
+    if decoded and decoded.isprintable():
+        return decoded
+    return text
