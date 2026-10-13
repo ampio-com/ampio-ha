@@ -218,6 +218,17 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(client._client.published[-1], ("ampio/control/anna/data", "device_details"))
         self.assertIn("device_details", client._section_sent)
 
+    async def test_retained_md5_before_the_session_is_up_does_not_fail_connect(self):
+        client = protocol.AmpioClient("localhost", 1883, "anna", "secret")
+        message = types.SimpleNamespace(
+            topic="ampio/fromDB/anna/md5/devices", payload=b"abc123", retain=True,
+        )
+        client._on_message(client._client, None, message)
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        self.assertEqual(client._client.published, [])
+        self.assertFalse(client._connected.done())
+
     async def test_retained_digest_does_not_discard_the_inflight_catalog(self):
         client = protocol.AmpioClient("localhost", 1883, "anna", "secret")
         client._connected_ok()

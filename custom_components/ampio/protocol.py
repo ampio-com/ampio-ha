@@ -235,10 +235,12 @@ class AmpioClient:
         self._notify()
 
     def _reject(self, error: Exception) -> None:
-        reconnect = self._connected.done() and self._ready.done()
+        connected_up = _future_succeeded(self._connected)
+        ready_up = _future_succeeded(self._ready)
+        reconnect = connected_up and ready_up
         if not self._connected.done():
             self._connected.set_exception(error)
-        elif not self._ready.done():
+        elif connected_up and not self._ready.done():
             self._ready.set_exception(error)
         self.available = False
         self._fail_waiters(error)
@@ -341,6 +343,10 @@ class AmpioClient:
             # The broker replays a retained digest on every subscribe. That is
             # the catalog we are already fetching, not a save during the fetch.
             if retained and section in self._section_sent:
+                return
+            # Retained digests are delivered as soon as the first filter is
+            # granted, which is before the session is marked available.
+            if not self.available:
                 return
             self._request_section(section)
             return
@@ -467,7 +473,7 @@ class AmpioClient:
             self._fail_request(err)
 
     def _request_section(self, section: str) -> None:
-        if not self._arm_section(section):
+        if not self.available or not self._arm_section(section):
             return
         self._spawn(self._publish_section_guarded(section))
 
@@ -488,13 +494,16 @@ class AmpioClient:
             raise
 
     async def _publish_section_guarded(self, section: str) -> None:
+        if not self.available:
+            self._section_sent.pop(section, None)
+            return
         try:
             await self._publish_section(section)
         except AmpioError as err:
             self._fail_request(err)
 
     def _request_states(self) -> None:
-        if not self._arm_states():
+        if not self.available or not self._arm_states():
             return
         self._spawn(self._publish_states_guarded())
 
@@ -516,6 +525,9 @@ class AmpioClient:
             raise
 
     async def _publish_states_guarded(self) -> None:
+        if not self.available:
+            self._state_request = None
+            return
         try:
             await self._publish_states()
         except AmpioError as err:
@@ -638,6 +650,13 @@ class AmpioClient:
                 if not future.done():
                     future.set_exception(error)
         self._waiters.clear()
+
+
+def _future_succeeded(future: asyncio.Future[None]) -> bool:
+    """True when the future finished with a result. Reading a failure marks it retrieved."""
+    if not future.done() or future.cancelled():
+        return False
+    return future.exception() is None
 
 
 def _suback_failed(reason_code: Any) -> bool:
