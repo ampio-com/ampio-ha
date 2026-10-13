@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import math
 from typing import Any
 
@@ -119,6 +120,49 @@ def hardware_id(device: dict[str, Any]) -> int | None:
     return value if value > 0 else None
 
 
-def hardware_name(device_id: int) -> str:
-    """Objects only carry the module id. The device list is admin-only."""
-    return f"Ampio {device_id}"
+def hardware_name(hardware: dict[int, dict[str, Any]], device_id: int) -> str:
+    """Use the name from the device_details list when the server sent it."""
+    record = hardware.get(device_id) or {}
+    label = _device_label(record.get("nazwa_urzadzenia") or record.get("device_name"))
+    return label or f"Ampio {device_id}"
+
+
+def hardware_details(record: dict[str, Any]) -> dict[str, str]:
+    """Type, firmware and MAC from the separate device_details query."""
+    details: dict[str, str] = {}
+    device_type = record.get("typ_urzadzenia")
+    if device_type not in (None, ""):
+        pcb = record.get("wersja_pcb")
+        details["model"] = f"type {device_type}" if pcb in (None, "") else f"type {device_type} / pcb {pcb}"
+    software = record.get("wersja_softu")
+    if software not in (None, ""):
+        details["sw_version"] = str(software)
+    if record.get("wersja_pcb") not in (None, ""):
+        details["hw_version"] = str(record.get("wersja_pcb"))
+    formatted = _mac_hex(record.get("mac_local") or record.get("mac"))
+    if formatted:
+        details["serial_number"] = formatted
+    return details
+
+
+def _mac_hex(raw: Any) -> str:
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return ""
+    if value <= 0:
+        return ""
+    return f"{value:X}"
+
+
+def _device_label(raw: Any) -> str:
+    text = str(raw or "").strip()
+    if not text:
+        return ""
+    try:
+        decoded = base64.b64decode(text, validate=True).decode("utf-8").strip()
+    except (ValueError, UnicodeDecodeError):
+        return text
+    if decoded and decoded.isprintable():
+        return decoded
+    return text

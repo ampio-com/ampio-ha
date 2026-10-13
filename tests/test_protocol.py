@@ -132,6 +132,17 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(protocol.AmpioTimeoutError):
             await client.async_confirm("/api/set/12/setValue/0", lambda state: state.get("state") == "0", timeout=0.01)
 
+    async def test_device_details_do_not_replace_objects(self):
+        client = protocol.AmpioClient("localhost", 1883, "anna", "secret")
+        client._connected_ok()
+        client._handle_message("ampio/fromDB/anna/data/devices", {"List": [{"id": 12, "id_urzadzenia": 7}]})
+        client._handle_message(
+            "ampio/fromDB/anna/data/device_details",
+            {"List": [{"id": 7, "nazwa_urzadzenia": "Salon", "typ_urzadzenia": 12, "wersja_softu": 400, "mac_local": 255}]},
+        )
+        self.assertEqual(set(client.catalog), {12})
+        self.assertEqual(client.hardware[7]["nazwa_urzadzenia"], "Salon")
+
     async def test_live_state_survives_older_snapshot(self):
         client = protocol.AmpioClient("localhost", 1883, "anna", "secret")
         client._connected_ok()
@@ -203,7 +214,11 @@ class MappingTests(unittest.TestCase):
         }
         self.assertEqual(mapping.hardware_id(objects[1]), 7)
         self.assertIsNone(mapping.hardware_id(objects[3]))
-        self.assertEqual(mapping.hardware_name(7), "Ampio 7")
+        hardware = {7: {"id": 7, "nazwa_urzadzenia": "U2Fsb24=", "typ_urzadzenia": 12, "wersja_softu": 400, "mac_local": 255}}
+        self.assertEqual(mapping.hardware_name(hardware, 7), "Salon")
+        self.assertEqual(mapping.hardware_name({}, 7), "Ampio 7")
+        self.assertEqual(mapping.hardware_details(hardware[7])["sw_version"], "400")
+        self.assertEqual(mapping.hardware_details(hardware[7])["serial_number"], "FF")
 
 
 if __name__ == "__main__":

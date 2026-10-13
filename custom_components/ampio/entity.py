@@ -14,7 +14,7 @@ from homeassistant.helpers.entity import DeviceInfo, Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
-from .mapping import hardware_id, hardware_name
+from .mapping import hardware_details, hardware_id, hardware_name
 from .protocol import AmpioClient, AmpioError, AmpioTimeoutError
 
 StatePredicate = Callable[[dict[str, Any]], bool]
@@ -61,11 +61,17 @@ class AmpioEntity(Entity):
     @property
     def device_info(self) -> DeviceInfo:
         module_id = hardware_id(self.device)
-        device_name = self.name if module_id is None else hardware_name(module_id)
+        record = self.client.hardware.get(module_id, {}) if module_id is not None else {}
+        device_name = self.name if module_id is None else hardware_name(self.client.hardware, module_id)
+        details = hardware_details(record)
         return DeviceInfo(
             identifiers={self.device_identifier},
             name=device_name,
             manufacturer="Ampio",
+            model=details.get("model"),
+            sw_version=details.get("sw_version"),
+            hw_version=details.get("hw_version"),
+            serial_number=details.get("serial_number"),
         )
 
     async def async_added_to_hass(self) -> None:

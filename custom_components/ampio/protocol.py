@@ -11,7 +11,7 @@ from typing import Any
 import paho.mqtt.client as mqtt
 
 _LOGGER = logging.getLogger(__name__)
-CATALOG_SECTIONS = ("devices", "params_devices", "groups", "group_devices", "scenes")
+CATALOG_SECTIONS = ("devices", "params_devices", "groups", "group_devices", "scenes", "device_details")
 STORED_SECTIONS = ("devices", "params_devices", "scenes")
 MAX_PAYLOAD_BYTES = 2_000_000
 COMMAND_TIMEOUT = 8.0
@@ -58,6 +58,7 @@ class AmpioClient:
         self.gateway_id: str | None = None
         self.info: dict[str, Any] = {}
         self.catalog: dict[int, dict[str, Any]] = {}
+        self.hardware: dict[int, dict[str, Any]] = {}
         self.params: dict[int, dict[str, Any]] = {}
         self.scenes: dict[int, dict[str, Any]] = {}
         self.states: dict[int, dict[str, Any]] = {}
@@ -213,6 +214,13 @@ class AmpioClient:
             if not self.gateway_id:
                 self._reject(AmpioCompatibilityError("Ampio server has no stable device_id"))
                 return
+        elif suffix == "data/device_details":
+            if self._accept_section("device_details"):
+                items = self._items(payload)
+                if items is not None:
+                    self.hardware = {int(item["id"]): item for item in items if self._valid_id(item)}
+                    catalog_changed = True
+            self._continue_section("device_details")
         elif suffix == "data/states":
             self._store_states(payload)
         elif suffix.startswith("data/"):
@@ -223,6 +231,7 @@ class AmpioClient:
                 self._continue_section(section)
                 if section == "devices" and self._devices_applied > 1:
                     self._request_states()
+                    self._request_section("device_details")
         elif suffix.startswith("ob/") and suffix.endswith("/state"):
             parts = suffix.split("/")
             if len(parts) != 3 or not parts[1].isdigit() or not isinstance(payload, dict):
