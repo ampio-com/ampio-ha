@@ -218,7 +218,12 @@ class AmpioClient:
             if self._accept_section("device_details"):
                 items = self._items(payload)
                 if items is not None:
-                    self.hardware = {int(item["id"]): item for item in items if self._valid_id(item)}
+                    hardware: dict[int, dict[str, Any]] = {}
+                    for item in items:
+                        module_id = self._module_id(item)
+                        if module_id is not None:
+                            hardware[module_id] = item
+                    self.hardware = hardware
                     catalog_changed = True
             self._continue_section("device_details")
         elif suffix == "data/states":
@@ -362,6 +367,16 @@ class AmpioClient:
     def _items(payload: Any) -> list[dict[str, Any]] | None:
         items = payload.get("List") if isinstance(payload, dict) else None
         return items if isinstance(items, list) else None
+
+    @staticmethod
+    def _module_id(item: Any) -> int | None:
+        if not isinstance(item, dict):
+            return None
+        try:
+            value = int(item.get("id_urzadzenia") or 0)
+        except (TypeError, ValueError):
+            return None
+        return value if value > 0 else None
 
     @staticmethod
     def _valid_id(item: Any) -> bool:

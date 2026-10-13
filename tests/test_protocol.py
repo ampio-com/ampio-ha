@@ -138,9 +138,13 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
         client._handle_message("ampio/fromDB/anna/data/devices", {"List": [{"id": 12, "id_urzadzenia": 7}]})
         client._handle_message(
             "ampio/fromDB/anna/data/device_details",
-            {"List": [{"id": 7, "nazwa_urzadzenia": "Salon", "typ_urzadzenia": 12, "wersja_softu": 400, "mac_local": 255}]},
+            {"List": [
+                {"id_obiektu": 12, "id_urzadzenia": 7, "nazwa_urzadzenia": "Salon", "typ_urzadzenia": 12, "wersja_softu": 400, "mac_local": 255},
+                {"id_obiektu": 13, "id_urzadzenia": 0, "nazwa_urzadzenia": "Hidden"},
+            ]},
         )
         self.assertEqual(set(client.catalog), {12})
+        self.assertEqual(set(client.hardware), {7})
         self.assertEqual(client.hardware[7]["nazwa_urzadzenia"], "Salon")
 
     async def test_live_state_survives_older_snapshot(self):
