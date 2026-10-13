@@ -56,7 +56,7 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
         client = protocol.AmpioClient("localhost", 1883, "anna", "secret")
         client._connected_ok()
         client._handle_message("ampio/fromDB/anna/data/info", {"Results": {"device_id": "gateway-1", "haCommandSource": True}})
-        client._handle_message("ampio/fromDB/anna/data/devices", {"List": [{"id": 12, "prawa": "1", "typ_komponentu": "przekaznik"}]})
+        client._handle_message("ampio/fromDB/anna/data/device_details", {"List": [{"id": 12, "prawa": "1", "typ_komponentu": "przekaznik"}]})
         client._handle_message("ampio/fromDB/anna/data/params_devices", {"List": []})
         client._handle_message("ampio/fromDB/anna/data/states", {"List": [{"id": 12, "stan_json": json.dumps({"state": "0"})}]})
         await asyncio.wait_for(client._ready, 1)
@@ -75,7 +75,7 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
     async def test_catalog_replaces_removed_objects_and_bad_state_is_ignored(self):
         client = protocol.AmpioClient("localhost", 1883, "anna", "secret")
         client._connected_ok()
-        topic = "ampio/fromDB/anna/data/devices"
+        topic = "ampio/fromDB/anna/data/device_details"
         client._handle_message(topic, {"List": [{"id": 1}, {"id": 2}]})
         client._handle_message(topic, {"List": [{"id": 2}]})
         self.assertEqual(set(client.catalog), {2})
@@ -88,7 +88,7 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
         message = types.SimpleNamespace(topic="ampio/fromDB/anna/md5/devices", payload=b"abc123")
         client._on_message(client._client, None, message)
         await asyncio.sleep(0)
-        self.assertEqual(client._client.published[-1], ("ampio/control/anna/data", "devices"))
+        self.assertEqual(client._client.published[-1], ("ampio/control/anna/data", "device_details"))
 
     async def test_reconnect_requires_fresh_snapshot(self):
         client = protocol.AmpioClient("localhost", 1883, "anna", "secret")
@@ -102,12 +102,12 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
     async def test_stale_catalog_response_is_discarded(self):
         client = protocol.AmpioClient("localhost", 1883, "anna", "secret")
         client._connected_ok()
-        client._section_sent["devices"] = 1
-        client._section_dirty.add("devices")
-        topic = "ampio/fromDB/anna/data/devices"
+        client._section_sent["device_details"] = 1
+        client._section_dirty.add("device_details")
+        topic = "ampio/fromDB/anna/data/device_details"
         client._handle_message(topic, {"List": [{"id": 1}]})
         self.assertEqual(client.catalog, {})
-        self.assertIn("devices", client._section_sent)
+        self.assertIn("device_details", client._section_sent)
         client._handle_message(topic, {"List": [{"id": 2}]})
         self.assertEqual(set(client.catalog), {2})
 
@@ -135,15 +135,14 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
     async def test_device_details_do_not_replace_objects(self):
         client = protocol.AmpioClient("localhost", 1883, "anna", "secret")
         client._connected_ok()
-        client._handle_message("ampio/fromDB/anna/data/devices", {"List": [{"id": 12, "id_urzadzenia": 7}]})
         client._handle_message(
             "ampio/fromDB/anna/data/device_details",
             {"List": [
-                {"id_obiektu": 12, "id_urzadzenia": 7, "nazwa_urzadzenia": "Salon", "typ_urzadzenia": 12, "wersja_softu": 400, "mac_local": 255},
-                {"id_obiektu": 13, "id_urzadzenia": 0, "nazwa_urzadzenia": "Hidden"},
+                {"id": 12, "id_urzadzenia": 7, "prawa": "1", "nazwa_urzadzenia": "Salon", "typ_urzadzenia": 12, "wersja_softu": 400, "mac_local": 255},
+                {"id": 13, "id_urzadzenia": 0, "prawa": "1", "nazwa_urzadzenia": "Loose"},
             ]},
         )
-        self.assertEqual(set(client.catalog), {12})
+        self.assertEqual(set(client.catalog), {12, 13})
         self.assertEqual(set(client.hardware), {7})
         self.assertEqual(client.hardware[7]["nazwa_urzadzenia"], "Salon")
 

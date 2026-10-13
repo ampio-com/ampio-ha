@@ -11,8 +11,8 @@ from typing import Any
 import paho.mqtt.client as mqtt
 
 _LOGGER = logging.getLogger(__name__)
-CATALOG_SECTIONS = ("devices", "params_devices", "groups", "group_devices", "scenes", "device_details")
-STORED_SECTIONS = ("devices", "params_devices", "scenes")
+CATALOG_SECTIONS = ("device_details", "params_devices", "groups", "group_devices", "scenes")
+STORED_SECTIONS = ("params_devices", "scenes")
 MAX_PAYLOAD_BYTES = 2_000_000
 COMMAND_TIMEOUT = 8.0
 StatePredicate = Callable[[dict[str, Any]], bool]
@@ -218,13 +218,10 @@ class AmpioClient:
             if self._accept_section("device_details"):
                 items = self._items(payload)
                 if items is not None:
-                    hardware: dict[int, dict[str, Any]] = {}
-                    for item in items:
-                        module_id = self._module_id(item)
-                        if module_id is not None:
-                            hardware[module_id] = item
-                    self.hardware = hardware
+                    self._store_device_details(items)
                     catalog_changed = True
+                    if self._devices_applied > 1:
+                        self._request_states()
             self._continue_section("device_details")
         elif suffix == "data/states":
             self._store_states(payload)
@@ -234,9 +231,6 @@ class AmpioClient:
                 if self._accept_section(section):
                     catalog_changed = self._store_section(section, payload)
                 self._continue_section(section)
-                if section == "devices" and self._devices_applied > 1:
-                    self._request_states()
-                    self._request_section("device_details")
         elif suffix.startswith("ob/") and suffix.endswith("/state"):
             parts = suffix.split("/")
             if len(parts) != 3 or not parts[1].isdigit() or not isinstance(payload, dict):
@@ -248,7 +242,9 @@ class AmpioClient:
             self._resolve_waiters(object_id)
         elif suffix.startswith("md5/"):
             section = suffix[4:]
-            if section in CATALOG_SECTIONS:
+            if section in ("devices", "device_details"):
+                self._request_section("device_details")
+            elif section in CATALOG_SECTIONS:
                 self._request_section(section)
             return
         else:
@@ -279,20 +275,26 @@ class AmpioClient:
         self._section_dirty.discard(section)
         self._request_section(section)
 
+    def _store_device_details(self, items: list[dict[str, Any]]) -> None:
+        catalog: dict[int, dict[str, Any]] = {}
+        hardware: dict[int, dict[str, Any]] = {}
+        for item in items:
+            if self._valid_id(item) and str(item.get("prawa", "1")) != "0":
+                catalog[int(item["id"])] = item
+            module_id = self._module_id(item)
+            if module_id is not None:
+                hardware[module_id] = item
+        self.catalog = catalog
+        self.hardware = hardware
+        self._catalog_loaded = True
+        self._devices_applied += 1
+        self.catalog_generation += 1
+
     def _store_section(self, section: str, payload: Any) -> bool:
         items = self._items(payload)
         if items is None or section not in STORED_SECTIONS:
             return False
-        if section == "devices":
-            self.catalog = {
-                int(item["id"]): item
-                for item in items
-                if self._valid_id(item) and str(item.get("prawa", "1")) != "0"
-            }
-            self._catalog_loaded = True
-            self._devices_applied += 1
-            self.catalog_generation += 1
-        elif section == "params_devices":
+        if section == "params_devices":
             self.params = {int(item["id"]): item for item in items if self._valid_id(item)}
             self._params_loaded = True
         elif section == "scenes":
