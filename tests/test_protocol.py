@@ -132,6 +132,19 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(protocol.AmpioTimeoutError):
             await client.async_confirm("/api/set/12/setValue/0", lambda state: state.get("state") == "0", timeout=0.01)
 
+    async def test_reconnect_auth_failure_is_reported_once(self):
+        client = protocol.AmpioClient("localhost", 1883, "anna", "secret")
+        client._connected.set_result(None)
+        client._ready.set_result(None)
+        seen: list[Exception] = []
+        client.add_auth_listener(seen.append)
+        client._reject(protocol.AmpioAuthError("rejected"))
+        client._reject(protocol.AmpioAuthError("rejected"))
+        self.assertEqual(len(seen), 1)
+        client._connected_ok()
+        client._reject(protocol.AmpioAuthError("rejected again"))
+        self.assertEqual(len(seen), 2)
+
     async def test_refresh_requests_catalog_and_states(self):
         client = protocol.AmpioClient("localhost", 1883, "anna", "secret")
         client._connected_ok()
@@ -217,6 +230,12 @@ class MappingTests(unittest.TestCase):
         self.assertEqual(mapping.impulse_command(impulse, params), "/api/set/2/setValue/255/5")
         timed = {**impulse, "czas": 8}
         self.assertEqual(mapping.impulse_command(timed, {}), "/api/set/2/setValue/255/8")
+
+    def test_roller_position_matches_five_percent_steps(self):
+        self.assertEqual(mapping.roller_step(0), 0)
+        self.assertEqual(mapping.roller_step(37), 35)
+        self.assertEqual(mapping.roller_step(38), 40)
+        self.assertEqual(mapping.roller_step(100), 100)
 
     def test_dictionary_led_is_not_a_dimmer(self):
         led = {"id": 3, "typ_komponentu": "led", "uwagi": "0=Off=1=0;1=On=1=1;"}

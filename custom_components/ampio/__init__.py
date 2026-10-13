@@ -29,6 +29,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except (AmpioError, OSError, TimeoutError) as err:
         raise ConfigEntryNotReady("Cannot connect to Ampio") from err
     entry.runtime_data = client
+
+    def _start_reauth(_err: AmpioAuthError) -> None:
+        entry.async_start_reauth(hass)
+
+    entry.async_on_unload(client.add_auth_listener(_start_reauth))
     try:
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
         remove_empty_devices(hass, entry)

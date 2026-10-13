@@ -32,6 +32,15 @@ def relay_levels(device: dict[str, Any]) -> tuple[int, int]:
     return minimum, maximum
 
 
+def roller_step(position: float) -> int:
+    """Ampio percentage rollers move and report in 5% steps, same as the mobile app."""
+    if position <= 0:
+        return 0
+    if position >= 100:
+        return 100
+    return int(math.floor(position / 5 + 0.5)) * 5
+
+
 def state_number(state: dict[str, Any]) -> float | None:
     """Parse a state without treating the string \"0\" as true."""
     raw = state.get("state")

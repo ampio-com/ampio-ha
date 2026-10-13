@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .entity import AmpioEntity, async_send_command, setup_dynamic_entities
-from .mapping import COVER_TYPES, state_number, writable
+from .mapping import COVER_TYPES, roller_step, state_number, writable
 from .protocol import AmpioClient
 
 
@@ -61,7 +61,8 @@ class AmpioCover(AmpioEntity, CoverEntity):
         position = int(kwargs[ATTR_POSITION])
         if not 0 <= position <= 100:
             raise ValueError("Invalid cover position")
+        target = roller_step(position)
         await async_send_command(
-            self.client, f"/api/set/{self.object_id}/setRollerPos/{position}/101",
-            lambda state: state_number(state) == position,
+            self.client, f"/api/set/{self.object_id}/setRollerPos/{target}/101",
+            lambda state: (reported := state_number(state)) is not None and roller_step(reported) == target,
         )

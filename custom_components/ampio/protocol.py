@@ -76,6 +76,8 @@ class AmpioClient:
         self._waiters: dict[int, list[tuple[StatePredicate, asyncio.Future[None]]]] = {}
         self._listeners: set[Callable[[], None]] = set()
         self._catalog_listeners: set[Callable[[], None]] = set()
+        self._auth_listeners: set[Callable[[AmpioAuthError], None]] = set()
+        self._auth_notified = False
 
     @property
     def states_ready(self) -> bool:
@@ -94,6 +96,11 @@ class AmpioClient:
     def add_catalog_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
         self._catalog_listeners.add(listener)
         return lambda: self._catalog_listeners.discard(listener)
+
+    def add_auth_listener(self, listener: Callable[[AmpioAuthError], None]) -> Callable[[], None]:
+        """Notify once when a reconnect is rejected. Cleared after the next successful login."""
+        self._auth_listeners.add(listener)
+        return lambda: self._auth_listeners.discard(listener)
 
     def _notify(self) -> None:
         for listener in tuple(self._listeners):
@@ -157,15 +164,22 @@ class AmpioClient:
         self._states_loaded = False
         if not self._connected.done():
             self._connected.set_result(None)
+        self._auth_notified = False
         self._notify()
 
     def _reject(self, error: Exception) -> None:
+        reconnect = self._connected.done() and self._ready.done()
         if not self._connected.done():
             self._connected.set_exception(error)
         elif not self._ready.done():
             self._ready.set_exception(error)
         self.available = False
         self._fail_waiters(error)
+        if reconnect and isinstance(error, AmpioAuthError) and not self._auth_notified:
+            self._auth_notified = True
+            for listener in tuple(self._auth_listeners):
+                listener(error)
+            self._client.disconnect()
         self._notify()
 
     def _on_disconnect(self, _client: mqtt.Client, _userdata: Any, _flags: Any, _reason_code: Any, _properties: Any) -> None:
