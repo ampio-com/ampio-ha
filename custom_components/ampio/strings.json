@@ -53,5 +53,61 @@
       "already_configured": "This Ampio server is already configured",
       "wrong_gateway": "This address belongs to a different Ampio server"
     }
+  },
+  "entity": {
+    "binary_sensor": {
+      "object": {
+        "state_attributes": {
+          "object_id": { "name": "Object number" }
+        }
+      }
+    },
+    "button": {
+      "object": {
+        "state_attributes": {
+          "object_id": { "name": "Object number" }
+        }
+      },
+      "scene": {
+        "state_attributes": {
+          "scene_id": { "name": "Scene number" }
+        }
+      }
+    },
+    "cover": {
+      "object": {
+        "state_attributes": {
+          "object_id": { "name": "Object number" }
+        }
+      }
+    },
+    "light": {
+      "object": {
+        "state_attributes": {
+          "object_id": { "name": "Object number" }
+        }
+      }
+    },
+    "select": {
+      "object": {
+        "state_attributes": {
+          "object_id": { "name": "Object number" }
+        }
+      }
+    },
+    "sensor": {
+      "object": {
+        "state_attributes": {
+          "object_id": { "name": "Object number" }
+        }
+      }
+    },
+    "switch": {
+      "object": {
+        "state_attributes": {
+          "object_id": { "name": "Object number" }
+        }
+      }
+    }
   }
 }

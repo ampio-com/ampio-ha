@@ -53,6 +53,7 @@ class AmpioImpulseButton(AmpioEntity, ButtonEntity):
 class AmpioSceneButton(ButtonEntity):
     _attr_has_entity_name = True
     _attr_name = None
+    _attr_translation_key = "scene"
 
     def __init__(self, client: AmpioClient, scene_id: int) -> None:
         self.client = client
@@ -60,6 +61,11 @@ class AmpioSceneButton(ButtonEntity):
         self.ampio_key = scene_id
         self._attr_unique_id = f"{client.gateway_id}:scene:{scene_id}"
         self.device_identifier = (DOMAIN, f"{client.gateway_id}:scene:{scene_id}")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, int]:
+        """Expose the Ampio server scene number in the entity details."""
+        return {"scene_id": self.scene_id}
 
     @property
     def available(self) -> bool:

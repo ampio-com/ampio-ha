@@ -24,6 +24,7 @@ class AmpioEntity(Entity):
 
     _attr_has_entity_name = True
     _attr_name = None
+    _attr_translation_key = "object"
 
     def __init__(self, client: AmpioClient, object_id: int, feature: str) -> None:
         self.client = client
@@ -39,6 +40,11 @@ class AmpioEntity(Entity):
     @property
     def available(self) -> bool:
         return self.client.available and self.client.states_ready and self.object_id in self.client.catalog
+
+    @property
+    def extra_state_attributes(self) -> dict[str, int]:
+        """Expose the Ampio server object number in the entity details."""
+        return {"object_id": self.object_id}
 
     @property
     def device_info(self) -> DeviceInfo:

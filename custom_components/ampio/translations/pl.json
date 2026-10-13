@@ -53,5 +53,61 @@
       "already_configured": "Ten serwer Ampio jest już skonfigurowany",
       "wrong_gateway": "Ten adres należy do innego serwera Ampio"
     }
+  },
+  "entity": {
+    "binary_sensor": {
+      "object": {
+        "state_attributes": {
+          "object_id": { "name": "Numer obiektu" }
+        }
+      }
+    },
+    "button": {
+      "object": {
+        "state_attributes": {
+          "object_id": { "name": "Numer obiektu" }
+        }
+      },
+      "scene": {
+        "state_attributes": {
+          "scene_id": { "name": "Numer sceny" }
+        }
+      }
+    },
+    "cover": {
+      "object": {
+        "state_attributes": {
+          "object_id": { "name": "Numer obiektu" }
+        }
+      }
+    },
+    "light": {
+      "object": {
+        "state_attributes": {
+          "object_id": { "name": "Numer obiektu" }
+        }
+      }
+    },
+    "select": {
+      "object": {
+        "state_attributes": {
+          "object_id": { "name": "Numer obiektu" }
+        }
+      }
+    },
+    "sensor": {
+      "object": {
+        "state_attributes": {
+          "object_id": { "name": "Numer obiektu" }
+        }
+      }
+    },
+    "switch": {
+      "object": {
+        "state_attributes": {
+          "object_id": { "name": "Numer obiektu" }
+        }
+      }
+    }
   }
 }
