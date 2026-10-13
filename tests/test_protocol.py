@@ -179,6 +179,11 @@ class DictionaryTests(unittest.TestCase):
 mapping_pkg = types.ModuleType("ampio_component")
 mapping_pkg.__path__ = [str(ROOT)]
 sys.modules["ampio_component"] = mapping_pkg
+symbols_spec = importlib.util.spec_from_file_location("ampio_component.symbols", ROOT / "symbols.py")
+symbols_module = importlib.util.module_from_spec(symbols_spec)
+sys.modules["ampio_component.symbols"] = symbols_module
+assert symbols_spec and symbols_spec.loader
+symbols_spec.loader.exec_module(symbols_module)
 dictionary_spec = importlib.util.spec_from_file_location("ampio_component.dictionary", ROOT / "dictionary.py")
 dictionary_module = importlib.util.module_from_spec(dictionary_spec)
 sys.modules["ampio_component.dictionary"] = dictionary_module
@@ -222,6 +227,9 @@ class MappingTests(unittest.TestCase):
         hardware = {7: {"id": 7, "nazwa_urzadzenia": "U2Fsb24=", "typ_urzadzenia": 12, "wersja_softu": 400, "mac_local": 255}}
         self.assertEqual(mapping.hardware_name(hardware, 7), "Salon")
         self.assertEqual(mapping.hardware_name({}, 7), "Ampio 7")
+        self.assertEqual(mapping.hardware_details(hardware[7])["model"], "M-RGBW")
+        self.assertEqual(mapping.symbol_name(10, 8), "M-SERV-MINI-s")
+        self.assertEqual(mapping.symbol_name(10, 99), "M-SERV-s")
         self.assertEqual(mapping.hardware_details(hardware[7])["sw_version"], "400")
         self.assertEqual(mapping.hardware_details(hardware[7])["serial_number"], "FF")
 

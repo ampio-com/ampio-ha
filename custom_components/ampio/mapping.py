@@ -7,6 +7,7 @@ import math
 from typing import Any
 
 from .dictionary import kind
+from .symbols import symbol_name
 
 RELAY_TYPES = {"przekaznik", "flaga", "flaga_l", "flaga_p"}
 NUMERIC_SENSOR_TYPES = {"temp", "lin_wej", "sensor", "bit8", "bit16", "sbit16", "bit32", "diag"}
@@ -136,8 +137,7 @@ def hardware_details(record: dict[str, Any]) -> dict[str, str]:
     details: dict[str, str] = {}
     device_type = record.get("typ_urzadzenia")
     if device_type not in (None, ""):
-        pcb = record.get("wersja_pcb")
-        details["model"] = f"type {device_type}" if pcb in (None, "") else f"type {device_type} / pcb {pcb}"
+        details["model"] = symbol_name(device_type, record.get("wersja_pcb"))
     software = record.get("wersja_softu")
     if software not in (None, ""):
         details["sw_version"] = str(software)
