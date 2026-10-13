@@ -58,6 +58,7 @@ class AmpioClient:
         self.gateway_id: str | None = None
         self.info: dict[str, Any] = {}
         self.catalog: dict[int, dict[str, Any]] = {}
+        self.hardware: dict[int, dict[str, Any]] = {}
         self.params: dict[int, dict[str, Any]] = {}
         self.scenes: dict[int, dict[str, Any]] = {}
         self.states: dict[int, dict[str, Any]] = {}
@@ -135,7 +136,7 @@ class AmpioClient:
             self._loop.call_soon_threadsafe(self._reject, error)
             return
         root = f"ampio/fromDB/{self.username}"
-        for topic in (f"{root}/data/#", f"{root}/md5/#", f"{root}/ob/#"):
+        for topic in (f"{root}/data/#", f"{root}/md5/#", f"{root}/ob/#", f"{root}/config/devices"):
             result, _ = client.subscribe(topic, qos=1)
             if result != mqtt.MQTT_ERR_SUCCESS:
                 self._loop.call_soon_threadsafe(self._reject, AmpioError(f"Cannot subscribe: {topic}"))
@@ -147,6 +148,7 @@ class AmpioClient:
                 self._send_section_request(client, section)
         if self._state_request is None:
             self._send_state_request(client)
+        client.publish(f"ampio/control/{self.username}/config", "devices", qos=1)
 
     def _connected_ok(self) -> None:
         self.available = True
@@ -213,6 +215,11 @@ class AmpioClient:
             if not self.gateway_id:
                 self._reject(AmpioCompatibilityError("Ampio server has no stable device_id"))
                 return
+        elif suffix == "config/devices":
+            items = self._items(payload)
+            if items is not None:
+                self.hardware = {int(item["id"]): item for item in items if self._valid_id(item)}
+                catalog_changed = True
         elif suffix == "data/states":
             self._store_states(payload)
         elif suffix.startswith("data/"):
@@ -223,6 +230,7 @@ class AmpioClient:
                 self._continue_section(section)
                 if section == "devices" and self._devices_applied > 1:
                     self._request_states()
+                    self._client.publish(f"ampio/control/{self.username}/config", "devices", qos=1)
         elif suffix.startswith("ob/") and suffix.endswith("/state"):
             parts = suffix.split("/")
             if len(parts) != 3 or not parts[1].isdigit() or not isinstance(payload, dict):
