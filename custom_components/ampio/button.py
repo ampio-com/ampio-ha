@@ -99,6 +99,7 @@ class AmpioRefreshButton(ButtonEntity):
     """Reload objects, module details and states from the Ampio server."""
 
     _attr_has_entity_name = True
+    _attr_name = "Refresh"
     _attr_translation_key = "refresh"
     _attr_entity_category = EntityCategory.CONFIG
 

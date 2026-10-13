@@ -155,6 +155,14 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
             ["device_details", "params_devices", "scenes", "api/json/states"],
         )
 
+    async def test_failed_device_details_does_not_clear_the_catalog(self):
+        client = protocol.AmpioClient("localhost", 1883, "anna", "secret")
+        client._connected_ok()
+        topic = "ampio/fromDB/anna/data/device_details"
+        client._handle_message(topic, {"List": [{"id": 12, "prawa": "1", "typ_komponentu": "przekaznik"}]})
+        client._handle_message(topic, {"error": True, "List": []})
+        self.assertEqual(set(client.catalog), {12})
+
     async def test_device_details_do_not_replace_objects(self):
         client = protocol.AmpioClient("localhost", 1883, "anna", "secret")
         client._connected_ok()

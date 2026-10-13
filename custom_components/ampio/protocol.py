@@ -229,6 +229,10 @@ class AmpioClient:
                 self._reject(AmpioCompatibilityError("Ampio server has no stable device_id"))
                 return
         elif suffix == "data/device_details":
+            if isinstance(payload, dict) and payload.get("error") in (True, "true"):
+                _LOGGER.warning("Ampio device_details query failed")
+                self._continue_section("device_details")
+                return
             if self._accept_section("device_details"):
                 items = self._items(payload)
                 if items is not None:
