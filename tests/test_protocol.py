@@ -132,6 +132,16 @@ class ProtocolTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(protocol.AmpioTimeoutError):
             await client.async_confirm("/api/set/12/setValue/0", lambda state: state.get("state") == "0", timeout=0.01)
 
+    async def test_refresh_requests_catalog_and_states(self):
+        client = protocol.AmpioClient("localhost", 1883, "anna", "secret")
+        client._connected_ok()
+        client._client.published.clear()
+        client.refresh()
+        self.assertEqual(
+            [item[1] for item in client._client.published],
+            ["device_details", "params_devices", "scenes", "api/json/states"],
+        )
+
     async def test_device_details_do_not_replace_objects(self):
         client = protocol.AmpioClient("localhost", 1883, "anna", "secret")
         client._connected_ok()

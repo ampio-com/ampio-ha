@@ -5,13 +5,14 @@ from __future__ import annotations
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .entity import AmpioEntity, async_send_command, setup_dynamic_entities
 from .mapping import impulse_command, is_impulse, writable
-from .protocol import AmpioClient
+from .protocol import AmpioClient, AmpioError
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
@@ -32,6 +33,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         platform="button", feature="scene", source=lambda client: client.scenes,
         matches=lambda scene, _client: str(scene.get("active", 1)) != "0", factory=AmpioSceneButton,
     )
+    async_add_entities([AmpioRefreshButton(entry.runtime_data)])
 
 
 class AmpioEventButton(AmpioEntity, ButtonEntity):
@@ -91,3 +93,36 @@ class AmpioSceneButton(ButtonEntity):
 
     async def async_press(self) -> None:
         await async_send_command(self.client, f"/api/run/scene/{self.scene_id}")
+
+
+class AmpioRefreshButton(ButtonEntity):
+    """Reload objects, module details and states from the Ampio server."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "refresh"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, client: AmpioClient) -> None:
+        self.client = client
+        self._attr_unique_id = f"{client.gateway_id}:refresh"
+
+    @property
+    def available(self) -> bool:
+        return self.client.available
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, f"{self.client.gateway_id}:gateway")},
+            name="Ampio",
+            manufacturer="Ampio",
+        )
+
+    async def async_added_to_hass(self) -> None:
+        self.async_on_remove(self.client.add_listener(self.async_write_ha_state))
+
+    async def async_press(self) -> None:
+        try:
+            self.client.refresh()
+        except AmpioError as err:
+            raise HomeAssistantError(str(err)) from err

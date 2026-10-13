@@ -72,6 +72,9 @@
         "state_attributes": {
           "scene_id": { "name": "Numer sceny" }
         }
+      },
+      "refresh": {
+        "name": "Odśwież"
       }
     },
     "cover": {

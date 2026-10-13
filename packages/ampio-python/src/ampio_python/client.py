@@ -341,6 +341,14 @@ class AmpioClient:
     def _section_dirty_states(self) -> bool:
         return "states" in self._section_dirty
 
+    def refresh(self) -> None:
+        """Ask the server again for objects, parameters, scenes and states."""
+        if not self.available:
+            raise AmpioError("Ampio MQTT connection is unavailable")
+        for section in ("device_details", "params_devices", "scenes"):
+            self._request_section(section)
+        self._request_states()
+
     def _request_section(self, section: str) -> None:
         if section in self._section_sent:
             self._section_dirty.add(section)

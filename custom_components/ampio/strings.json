@@ -72,6 +72,9 @@
         "state_attributes": {
           "scene_id": { "name": "Scene number" }
         }
+      },
+      "refresh": {
+        "name": "Refresh"
       }
     },
     "cover": {
